@@ -33,7 +33,11 @@ async def convert(
     work_dir = Path(tempfile.mkdtemp())
     try:
         input_path = work_dir / "input.silk"
-        input_path.write_bytes(await file.read())
+        data = await file.read()
+        if len(data) > 10 * 1024 * 1024:  # 10 MB max
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
+        input_path.write_bytes(data)
 
         output_path = convert_silk(
             input_path,
@@ -45,9 +49,9 @@ async def convert(
     except ConversionError as e:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
+    except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     # Cleanup AFTER the response body has been fully sent
     background_tasks.add_task(shutil.rmtree, work_dir, ignore_errors=True)
