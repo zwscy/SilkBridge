@@ -97,7 +97,7 @@ def test_decoder_failure_raises(tmp_path):
     work = make_work_dir()
     try:
         with patch("app.converter.subprocess.run", return_value=MagicMock(returncode=1, stderr=b"err")):
-            with pytest.raises(ConversionError):
+            with pytest.raises(ConversionError, match="silk-v3-decoder failed"):
                 convert_silk(silk, work_dir=work, format="mp3", bitrate="320k", sample_rate=44100)
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -117,7 +117,7 @@ def test_ffmpeg_failure_raises(tmp_path):
             return MagicMock(returncode=1, stderr=b"ffmpeg error")
 
         with patch("app.converter.subprocess.run", side_effect=side_effect):
-            with pytest.raises(ConversionError):
+            with pytest.raises(ConversionError, match="ffmpeg failed"):
                 convert_silk(silk, work_dir=work, format="mp3", bitrate="320k", sample_rate=44100)
     finally:
         shutil.rmtree(work, ignore_errors=True)

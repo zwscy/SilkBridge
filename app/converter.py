@@ -43,10 +43,13 @@ def convert_silk(
 
 
 def _decode_silk(silk_path: Path, pcm_path: Path) -> None:
-    result = subprocess.run(
-        ["silk-v3-decoder", str(silk_path), str(pcm_path)],
-        capture_output=True,
-    )
+    try:
+        result = subprocess.run(
+            ["silk-v3-decoder", str(silk_path), str(pcm_path)],
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        raise ConversionError("silk-v3-decoder not found; is it installed and on PATH?")
     if result.returncode != 0:
         raise ConversionError(
             f"silk-v3-decoder failed: {result.stderr.decode(errors='replace')}"
@@ -65,15 +68,20 @@ def _encode_audio(
     ]
 
     if format == "mp3":
-        cmd += ["-codec:a", "libmp3lame", "-b:a", bitrate, "-q:a", "0"]
+        cmd += ["-codec:a", "libmp3lame", "-b:a", bitrate]
     elif format == "wav":
         cmd += ["-codec:a", "pcm_s16le"]
     elif format == "flac":
         cmd += ["-codec:a", "flac"]
+    else:
+        raise ConversionError(f"Unsupported format: {format!r}. Expected mp3, wav, or flac.")
 
     cmd.append(str(output_path))
 
-    result = subprocess.run(cmd, capture_output=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        raise ConversionError("ffmpeg not found; is it installed and on PATH?")
     if result.returncode != 0:
         raise ConversionError(
             f"ffmpeg failed: {result.stderr.decode(errors='replace')}"
