@@ -1,0 +1,14 @@
+services:
+  silk-converter:
+    build: .
+    image: silk-to-mp3:latest
+    container_name: silk-converter
+    ports:
+      - "${PORT:-8080}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
