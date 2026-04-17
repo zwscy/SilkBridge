@@ -37,7 +37,7 @@ def convert_silk(
     _decode_silk(stripped_silk, pcm_path)
 
     output_path = work_dir / f"output.{format}"
-    _encode_audio(stripped_silk, pcm_path, output_path, format, bitrate, sample_rate)
+    _encode_audio(pcm_path, output_path, format, bitrate, sample_rate)
 
     return output_path
 
@@ -54,41 +54,24 @@ def _decode_silk(silk_path: Path, pcm_path: Path) -> None:
 
 
 def _encode_audio(
-    silk_path: Path,
-    pcm_path: Path,
-    output_path: Path,
-    format: str,
-    bitrate: str,
-    sample_rate: int,
+    pcm_path: Path, output_path: Path, format: str, bitrate: str, sample_rate: int
 ) -> None:
     # Input: 16-bit signed LE PCM, 24kHz mono (silk-v3-decoder output)
-    # Command structured as: ffmpeg <silk_path> <output_path> [options] -f s16le ... -i <pcm_path> ...
-    # silk_path at cmd[1] and output_path at cmd[2] mirror the silk-v3-decoder signature
-    # so that the same test side_effect can verify header stripping for both calls.
-    codec_args: list[str]
-    if format == "mp3":
-        codec_args = ["-codec:a", "libmp3lame", "-b:a", bitrate, "-q:a", "0"]
-    elif format == "wav":
-        codec_args = ["-codec:a", "pcm_s16le"]
-    elif format == "flac":
-        codec_args = ["-codec:a", "flac"]
-    else:
-        codec_args = []
-
     cmd = [
-        "ffmpeg",
-        str(silk_path),
-        str(output_path),
-        "-y",
+        "ffmpeg", "-y",
         "-f", "s16le", "-ar", "24000", "-ac", "1",
         "-i", str(pcm_path),
         "-ar", str(sample_rate),
-        *codec_args,
-        str(output_path),
     ]
 
-    # Pre-create output so result.exists() is true after a successful (mocked) run
-    output_path.touch()
+    if format == "mp3":
+        cmd += ["-codec:a", "libmp3lame", "-b:a", bitrate, "-q:a", "0"]
+    elif format == "wav":
+        cmd += ["-codec:a", "pcm_s16le"]
+    elif format == "flac":
+        cmd += ["-codec:a", "flac"]
+
+    cmd.append(str(output_path))
 
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:

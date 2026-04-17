@@ -17,9 +17,11 @@ def fake_silk():
 
 
 def _decoder_side_effect(cmd, **kwargs):
-    """Create a fake PCM file when silk-v3-decoder is called; pass through ffmpeg."""
+    """Create fake output files for subprocess calls; pass through with success."""
     if cmd[0] == "silk-v3-decoder":
         Path(cmd[2]).write_bytes(b"\x00" * 1000)
+    elif cmd[0] == "ffmpeg":
+        Path(cmd[-1]).write_bytes(b"\x00" * 100)
     return MagicMock(returncode=0)
 
 
@@ -73,9 +75,12 @@ def test_strips_wechat_header(tmp_path):
     written_bytes = {}
     try:
         def side_effect(cmd, **kwargs):
-            stripped_path = Path(cmd[1])
-            written_bytes["content"] = stripped_path.read_bytes()
-            Path(cmd[2]).write_bytes(b"\x00" * 100)
+            if cmd[0] == "silk-v3-decoder":
+                stripped_path = Path(cmd[1])
+                written_bytes["content"] = stripped_path.read_bytes()
+                Path(cmd[2]).write_bytes(b"\x00" * 100)
+            elif cmd[0] == "ffmpeg":
+                Path(cmd[-1]).write_bytes(b"\x00" * 100)
             return MagicMock(returncode=0)
 
         with patch("app.converter.subprocess.run", side_effect=side_effect):
