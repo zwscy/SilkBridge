@@ -8,6 +8,8 @@ from fastapi.responses import FileResponse
 
 from app.converter import ConversionError, convert_silk
 
+_VALID_RATES = {8000, 16000, 44100, 48000}
+
 app = FastAPI(title="Silk-to-Audio Converter", version="1.0.0")
 
 _MIME = {"mp3": "audio/mpeg", "wav": "audio/wav", "flac": "audio/flac"}
@@ -24,8 +26,10 @@ async def convert(
     file: UploadFile = File(...),
     format: Literal["mp3", "wav", "flac"] = Form("mp3"),
     bitrate: Literal["128k", "192k", "320k"] = Form("320k"),
-    sample_rate: Literal[8000, 16000, 44100, 48000] = Form(44100),
+    sample_rate: int = Form(44100),
 ):
+    if sample_rate not in _VALID_RATES:
+        raise HTTPException(status_code=422, detail=f"sample_rate must be one of {sorted(_VALID_RATES)}")
     work_dir = Path(tempfile.mkdtemp())
     try:
         input_path = work_dir / "input.silk"
@@ -41,15 +45,15 @@ async def convert(
     except ConversionError as e:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=str(e))
-    except Exception:
+    except Exception as e:
         shutil.rmtree(work_dir, ignore_errors=True)
-        raise
+        raise HTTPException(status_code=500, detail=str(e))
 
     # Cleanup AFTER the response body has been fully sent
-    background_tasks.add_task(shutil.rmtree, str(work_dir), True)
+    background_tasks.add_task(shutil.rmtree, work_dir, ignore_errors=True)
 
     return FileResponse(
-        path=str(output_path),
+        path=output_path,
         media_type=_MIME[format],
         filename=f"output.{format}",
     )

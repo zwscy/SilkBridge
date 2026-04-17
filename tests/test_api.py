@@ -93,3 +93,43 @@ def test_conversion_error_returns_500():
 
     assert resp.status_code == 500
     assert "decode failed" in resp.json()["detail"]
+
+
+def test_explicit_sample_rate_and_bitrate(tmp_path):
+    """Verify sample_rate and bitrate sent as form strings are accepted and forwarded correctly."""
+    fake_out = tmp_path / "output.mp3"
+    fake_out.write_bytes(b"ID3data")
+
+    with patch("app.main.convert_silk", return_value=fake_out) as mock_conv:
+        client = get_client()
+        with open(FIXTURE, "rb") as f:
+            resp = client.post(
+                "/convert",
+                files={"file": ("v.silk", f, "application/octet-stream")},
+                data={"format": "mp3", "bitrate": "192k", "sample_rate": "44100"},
+            )
+
+    assert resp.status_code == 200
+    _, kwargs = mock_conv.call_args
+    assert kwargs["bitrate"] == "192k"
+    assert kwargs["sample_rate"] == 44100  # must arrive as int, not string
+
+
+def test_invalid_sample_rate_returns_422():
+    client = get_client()
+    with open(FIXTURE, "rb") as f:
+        resp = client.post(
+            "/convert",
+            files={"file": ("v.silk", f, "application/octet-stream")},
+            data={"sample_rate": "22050"},
+        )
+    assert resp.status_code == 422
+
+
+def test_unexpected_error_returns_500():
+    """Verify unexpected errors (not ConversionError) still return 500 and don't crash."""
+    with patch("app.main.convert_silk", side_effect=RuntimeError("unexpected")):
+        client = get_client()
+        with open(FIXTURE, "rb") as f:
+            resp = client.post("/convert", files={"file": ("v.silk", f, "application/octet-stream")})
+    assert resp.status_code == 500
