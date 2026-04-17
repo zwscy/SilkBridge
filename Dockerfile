@@ -16,8 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /build/silk-v3-decoder/silk/decoder /usr/local/bin/silk-v3-decoder
-RUN chmod +x /usr/local/bin/silk-v3-decoder
+COPY --from=builder --chmod=755 /build/silk-v3-decoder/silk/decoder /usr/local/bin/silk-v3-decoder
+
+RUN groupadd --gid 1001 appuser && \
+    useradd --uid 1001 --gid 1001 --no-create-home appuser
 
 WORKDIR /app
 
@@ -25,6 +27,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
+
+USER appuser
 
 EXPOSE 8080
 
