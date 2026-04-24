@@ -5,11 +5,11 @@
 - SILK 转 MP3/WAV/FLAC
 - MP3 转 SILK
 
-服务基于 FastAPI、ffmpeg、silk-v3-decoder/encoder，推荐用 Docker Compose + GHCR 镜像部署。
+服务基于 FastAPI、ffmpeg、silk-v3-decoder/encoder，推荐直接拉取 GHCR 镜像部署。
 
 ## 线上镜像
 
-推送到 `main` 分支后，GitHub Actions 会自动构建并推送镜像：
+GitHub Actions 会自动构建并推送镜像：
 
 ```text
 ghcr.io/zwscy/silkbridge:latest
@@ -17,32 +17,53 @@ ghcr.io/zwscy/silkbridge:latest
 
 推送 `v*` 标签时，也会生成对应版本标签的镜像。
 
-首次部署前，需要先把代码推送到 GitHub，并等待 Actions 构建完成。
+## Docker 部署
 
-建议把 GHCR 镜像包设为 Public，这样服务器和宝塔 Docker 可以直接拉取，不需要登录：
-
-1. 打开 GitHub 仓库的 `Packages`
-2. 进入 `silkbridge` 包
-3. 打开 `Package settings`
-4. 在 `Danger Zone` 中把包可见性改成 `Public`
-
-如果 GHCR 镜像包保持私有，服务器需要先登录：
+服务器需要先安装 Docker。默认容器监听 `8080` 端口，宿主机也映射到 `8080`。
 
 ```bash
-docker login ghcr.io -u <github-user>
+docker pull ghcr.io/zwscy/silkbridge:latest
+
+docker run -d \
+  --name silk-converter \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  ghcr.io/zwscy/silkbridge:latest
 ```
 
-密码使用带 `read:packages` 权限的 GitHub token。
+启动后检查：
 
-## 服务器部署
+```bash
+docker ps
+curl http://localhost:8080/health
+```
 
-服务器需要先安装：
+正常返回：
 
-- Docker
-- Docker Compose 插件，确认命令：`docker compose version`
-- Git
+```json
+{"status":"ok"}
+```
 
-首次部署：
+如果需要外网访问，需要在服务器防火墙和云厂商安全组中放行 `8080` 端口。
+
+### 更新服务
+
+镜像更新后，服务器执行：
+
+```bash
+docker pull ghcr.io/zwscy/silkbridge:latest
+docker rm -f silk-converter
+
+docker run -d \
+  --name silk-converter \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  ghcr.io/zwscy/silkbridge:latest
+```
+
+## 本地部署
+
+本地部署需要安装 Git、Docker 和 Docker Compose 插件。
 
 ```bash
 git clone https://github.com/zwscy/SilkBridge.git
@@ -51,35 +72,7 @@ cp .env.example .env
 ./scripts/deploy.sh
 ```
 
-部署脚本默认会拉取线上镜像并启动容器。
-
-默认监听宿主机 `8080` 端口。需要改端口时，编辑 `.env`：
-
-```bash
-PORT=8080
-```
-
-修改后重新部署：
-
-```bash
-./scripts/deploy.sh
-```
-
-## 更新服务
-
-服务器进入项目目录后执行：
-
-```bash
-cd SilkBridge
-git pull
-./scripts/deploy.sh
-```
-
-脚本会拉取最新线上镜像并启动容器。
-
-## 本地构建
-
-如果需要在当前机器直接构建镜像：
+`scripts/deploy.sh` 默认会拉取线上镜像并启动容器。如果需要在当前机器直接构建镜像：
 
 ```bash
 DEPLOY_MODE=build ./scripts/deploy.sh
@@ -158,29 +151,31 @@ curl -X POST http://localhost:8080/convert \
 查看容器状态：
 
 ```bash
-docker compose ps
+docker ps
 ```
 
 查看日志：
 
 ```bash
-docker compose logs -f
+docker logs -f silk-converter
 ```
 
 重启服务：
 
 ```bash
-docker compose restart
+docker restart silk-converter
 ```
 
 停止服务：
 
 ```bash
-docker compose down
+docker rm -f silk-converter
 ```
 
-重新构建并启动：
+拉取最新镜像并重启：
 
 ```bash
-DEPLOY_MODE=build ./scripts/deploy.sh
+docker pull ghcr.io/zwscy/silkbridge:latest
+docker rm -f silk-converter
+docker run -d --name silk-converter --restart unless-stopped -p 8080:8080 ghcr.io/zwscy/silkbridge:latest
 ```
