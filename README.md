@@ -5,7 +5,34 @@
 - SILK 转 MP3/WAV/FLAC
 - MP3 转 SILK
 
-服务基于 FastAPI、ffmpeg、silk-v3-decoder/encoder，推荐用 Docker Compose 部署。
+服务基于 FastAPI、ffmpeg、silk-v3-decoder/encoder，推荐用 Docker Compose + GHCR 镜像部署。
+
+## 线上镜像
+
+推送到 `main` 分支后，GitHub Actions 会自动构建并推送镜像：
+
+```text
+ghcr.io/zwscy/silkbridge:latest
+```
+
+推送 `v*` 标签时，也会生成对应版本标签的镜像。
+
+首次部署前，需要先把代码推送到 GitHub，并等待 Actions 构建完成。
+
+建议把 GHCR 镜像包设为 Public，这样服务器和宝塔 Docker 可以直接拉取，不需要登录：
+
+1. 打开 GitHub 仓库的 `Packages`
+2. 进入 `silkbridge` 包
+3. 打开 `Package settings`
+4. 在 `Danger Zone` 中把包可见性改成 `Public`
+
+如果 GHCR 镜像包保持私有，服务器需要先登录：
+
+```bash
+docker login ghcr.io -u <github-user>
+```
+
+密码使用带 `read:packages` 权限的 GitHub token。
 
 ## 服务器部署
 
@@ -23,6 +50,8 @@ cd SilkBridge
 cp .env.example .env
 ./scripts/deploy.sh
 ```
+
+部署脚本默认会拉取线上镜像并启动容器。
 
 默认监听宿主机 `8080` 端口。需要改端口时，编辑 `.env`：
 
@@ -46,7 +75,15 @@ git pull
 ./scripts/deploy.sh
 ```
 
-脚本会重新构建镜像并启动容器。
+脚本会拉取最新线上镜像并启动容器。
+
+## 本地构建
+
+如果需要在当前机器直接构建镜像：
+
+```bash
+DEPLOY_MODE=build ./scripts/deploy.sh
+```
 
 ## 健康检查
 
@@ -145,5 +182,5 @@ docker compose down
 重新构建并启动：
 
 ```bash
-./scripts/deploy.sh
+DEPLOY_MODE=build ./scripts/deploy.sh
 ```
