@@ -1,6 +1,9 @@
 import subprocess
 from pathlib import Path
 
+_SILK_PCM_SAMPLE_RATE = 24000
+_SILK_PCM_CHANNELS = 1
+
 
 class ConversionError(Exception):
     pass
@@ -42,6 +45,17 @@ def convert_silk(
     return output_path
 
 
+def convert_mp3_to_silk(input_path: Path, work_dir: Path) -> Path:
+    """Convert an MP3 file to a WeChat-compatible .silk file."""
+    pcm_path = work_dir / "input.pcm"
+    _decode_audio_to_pcm(input_path, pcm_path)
+
+    output_path = work_dir / "output.silk"
+    _encode_silk(pcm_path, output_path)
+
+    return output_path
+
+
 def _decode_silk(silk_path: Path, pcm_path: Path) -> None:
     try:
         result = subprocess.run(
@@ -56,13 +70,33 @@ def _decode_silk(silk_path: Path, pcm_path: Path) -> None:
         )
 
 
+def _decode_audio_to_pcm(input_path: Path, pcm_path: Path) -> None:
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(input_path),
+        "-f", "s16le",
+        "-ar", str(_SILK_PCM_SAMPLE_RATE),
+        "-ac", str(_SILK_PCM_CHANNELS),
+        str(pcm_path),
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        raise ConversionError("ffmpeg not found; is it installed and on PATH?")
+    if result.returncode != 0:
+        raise ConversionError(
+            f"ffmpeg failed: {result.stderr.decode(errors='replace')}"
+        )
+
+
 def _encode_audio(
     pcm_path: Path, output_path: Path, format: str, bitrate: str, sample_rate: int
 ) -> None:
     # Input: 16-bit signed LE PCM, 24kHz mono (silk-v3-decoder output)
     cmd = [
         "ffmpeg", "-y",
-        "-f", "s16le", "-ar", "24000", "-ac", "1",
+        "-f", "s16le", "-ar", str(_SILK_PCM_SAMPLE_RATE), "-ac", str(_SILK_PCM_CHANNELS),
         "-i", str(pcm_path),
         "-ar", str(sample_rate),
     ]
@@ -85,4 +119,18 @@ def _encode_audio(
     if result.returncode != 0:
         raise ConversionError(
             f"ffmpeg failed: {result.stderr.decode(errors='replace')}"
+        )
+
+
+def _encode_silk(pcm_path: Path, output_path: Path) -> None:
+    try:
+        result = subprocess.run(
+            ["silk-v3-encoder", str(pcm_path), str(output_path), "-tencent"],
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        raise ConversionError("silk-v3-encoder not found; is it installed and on PATH?")
+    if result.returncode != 0:
+        raise ConversionError(
+            f"silk-v3-encoder failed: {result.stderr.decode(errors='replace')}"
         )

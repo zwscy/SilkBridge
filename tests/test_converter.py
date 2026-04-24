@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.converter import ConversionError, convert_silk
+from app.converter import ConversionError, convert_mp3_to_silk, convert_silk
 
 
 def make_work_dir():
@@ -14,6 +14,10 @@ def make_work_dir():
 
 def fake_silk():
     return b"\x02#!SILK_V3" + b"\x00" * 100
+
+
+def fake_mp3():
+    return b"ID3" + b"\x00" * 100
 
 
 def _decoder_side_effect(cmd, **kwargs):
@@ -119,5 +123,83 @@ def test_ffmpeg_failure_raises(tmp_path):
         with patch("app.converter.subprocess.run", side_effect=side_effect):
             with pytest.raises(ConversionError, match="ffmpeg failed"):
                 convert_silk(silk, work_dir=work, format="mp3", bitrate="320k", sample_rate=44100)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_convert_mp3_to_silk(tmp_path):
+    mp3 = tmp_path / "input.mp3"
+    mp3.write_bytes(fake_mp3())
+    work = make_work_dir()
+    try:
+        def side_effect(cmd, **kwargs):
+            if cmd[0] == "ffmpeg":
+                Path(cmd[-1]).write_bytes(b"\x00" * 1000)
+            elif cmd[0] == "silk-v3-encoder":
+                Path(cmd[2]).write_bytes(b"\x02#!SILK_V3" + b"\x00" * 10)
+            return MagicMock(returncode=0)
+
+        with patch("app.converter.subprocess.run", side_effect=side_effect):
+            result = convert_mp3_to_silk(mp3, work_dir=work)
+
+        assert result.suffix == ".silk"
+        assert result.exists()
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_convert_mp3_to_silk_uses_tencent_encoder_flag(tmp_path):
+    mp3 = tmp_path / "input.mp3"
+    mp3.write_bytes(fake_mp3())
+    work = make_work_dir()
+    commands = []
+    try:
+        def side_effect(cmd, **kwargs):
+            commands.append(cmd)
+            if cmd[0] == "ffmpeg":
+                Path(cmd[-1]).write_bytes(b"\x00" * 1000)
+            elif cmd[0] == "silk-v3-encoder":
+                Path(cmd[2]).write_bytes(b"\x02#!SILK_V3" + b"\x00" * 10)
+            return MagicMock(returncode=0)
+
+        with patch("app.converter.subprocess.run", side_effect=side_effect):
+            convert_mp3_to_silk(mp3, work_dir=work)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+    assert commands[-1] == [
+        "silk-v3-encoder",
+        str(work / "input.pcm"),
+        str(work / "output.silk"),
+        "-tencent",
+    ]
+
+
+def test_mp3_to_silk_ffmpeg_failure_raises(tmp_path):
+    mp3 = tmp_path / "input.mp3"
+    mp3.write_bytes(fake_mp3())
+    work = make_work_dir()
+    try:
+        with patch("app.converter.subprocess.run", return_value=MagicMock(returncode=1, stderr=b"bad mp3")):
+            with pytest.raises(ConversionError, match="ffmpeg failed"):
+                convert_mp3_to_silk(mp3, work_dir=work)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_mp3_to_silk_encoder_failure_raises(tmp_path):
+    mp3 = tmp_path / "input.mp3"
+    mp3.write_bytes(fake_mp3())
+    work = make_work_dir()
+    try:
+        def side_effect(cmd, **kwargs):
+            if cmd[0] == "ffmpeg":
+                Path(cmd[-1]).write_bytes(b"\x00" * 1000)
+                return MagicMock(returncode=0)
+            return MagicMock(returncode=1, stderr=b"encode failed")
+
+        with patch("app.converter.subprocess.run", side_effect=side_effect):
+            with pytest.raises(ConversionError, match="silk-v3-encoder failed"):
+                convert_mp3_to_silk(mp3, work_dir=work)
     finally:
         shutil.rmtree(work, ignore_errors=True)

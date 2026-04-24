@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample.silk"
+MP3_FIXTURE = b"ID3" + b"\x00" * 100
 
 
 def get_client():
@@ -133,3 +134,35 @@ def test_unexpected_error_returns_500():
         with open(FIXTURE, "rb") as f:
             resp = client.post("/convert", files={"file": ("v.silk", f, "application/octet-stream")})
     assert resp.status_code == 500
+
+
+def test_convert_to_silk(tmp_path):
+    fake_out = tmp_path / "output.silk"
+    fake_out.write_bytes(b"\x02#!SILK_V3" + b"\x00" * 10)
+
+    with patch("app.main.convert_mp3_to_silk", return_value=fake_out) as mock_conv:
+        client = get_client()
+        resp = client.post(
+            "/convert-to-silk",
+            files={"file": ("voice.mp3", MP3_FIXTURE, "audio/mpeg")},
+        )
+
+    assert resp.status_code == 200
+    assert resp.content.startswith(b"\x02#!SILK_V3")
+    assert resp.headers["content-type"].startswith("audio/silk")
+    _, kwargs = mock_conv.call_args
+    assert kwargs["work_dir"].name.startswith("tmp")
+
+
+def test_convert_to_silk_conversion_error_returns_500():
+    from app.converter import ConversionError
+
+    with patch("app.main.convert_mp3_to_silk", side_effect=ConversionError("encode failed")):
+        client = get_client()
+        resp = client.post(
+            "/convert-to-silk",
+            files={"file": ("voice.mp3", MP3_FIXTURE, "audio/mpeg")},
+        )
+
+    assert resp.status_code == 500
+    assert "encode failed" in resp.json()["detail"]

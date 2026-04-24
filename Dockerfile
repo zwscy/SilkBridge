@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 RUN git clone --depth=1 https://github.com/kn007/silk-v3-decoder.git && \
-    cd silk-v3-decoder/silk && make
+    cd silk-v3-decoder/silk && make && make encoder
 
 # ── Stage 2: runtime image ────────────────────────────────────────────────────
 FROM python:3.11-slim
@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder --chmod=755 /build/silk-v3-decoder/silk/decoder /usr/local/bin/silk-v3-decoder
+COPY --from=builder --chmod=755 /build/silk-v3-decoder/silk/encoder /usr/local/bin/silk-v3-encoder
 
 RUN groupadd --gid 1001 appuser && \
     useradd --uid 1001 --gid 1001 --no-create-home appuser
